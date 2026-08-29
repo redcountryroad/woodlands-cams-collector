@@ -23,6 +23,63 @@ images to the private data repo:
   heartbeat commit (`LAST_RUN.txt`) back to this code repo using the
   default `GITHUB_TOKEN`, keeping the cron alive indefinitely.
 
+## Data destination
+
+By default, captured images and `metadata.jsonl` are pushed to a
+**private GitHub repo** —
+[redcountryroad/woodlands-cams-data](https://github.com/redcountryroad/woodlands-cams-data)
+— under `images/<YYYY-MM-DD>/<camera_id>/<camera_id>_<timestamp>.jpg`.
+This keeps raw image data out of the public code repo entirely while
+still versioning every capture with full history.
+
+This is controlled by two things in `.github/workflows/collect.yml`:
+
+1. The **"Checkout data repo"** step, which clones the target repo into
+   `./data` using a token with write access:
+   ```yaml
+   - name: Checkout data repo
+     uses: actions/checkout@v4
+     with:
+       repository: <owner>/woodlands-cams-data
+       token: ${{ secrets.DATA_REPO_PAT }}
+       path: data
+   ```
+2. The **collector invocation**, which just writes to a local directory —
+   `collector.py` itself has no knowledge of GitHub or git; it only cares
+   about `--output-dir`:
+   ```yaml
+   - name: Run collector
+     run: python collector.py --once --output-dir ./data/images
+   ```
+
+Because the collector is destination-agnostic (plain files on disk),
+retargeting storage elsewhere doesn't require touching `collector.py` —
+only the workflow steps *after* "Run collector" need to change:
+
+- **A different private GitHub repo**: change `repository:` in the
+  checkout step and the `DATA_REPO_PAT` secret's scope to match.
+- **Cloud object storage (e.g. S3, GCS, Azure Blob)**: drop the
+  "Checkout data repo" and "Commit and push to data repo" steps, and
+  instead sync `./data/images` to a bucket after the collector runs,
+  e.g.:
+  ```yaml
+  - name: Run collector
+    run: python collector.py --once --output-dir ./images
+
+  - name: Sync to S3
+    run: aws s3 sync ./images s3://your-bucket/woodlands-cams/ --only-show-errors
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  ```
+- **Self-hosted / other server (e.g. via SSH/rsync)**: same idea — swap
+  the git push steps for an `rsync`/`scp` step against your own host,
+  authenticated with a deploy key stored as a secret.
+
+In every case the heartbeat step (which keeps the *code* repo's cron
+alive) is independent of where images end up, so it can stay as-is
+regardless of which data destination you choose.
+
 ## Setting up GitHub Actions
 
 1. Fork/clone this repo as `<your-username>/woodlands-cams-collector`
