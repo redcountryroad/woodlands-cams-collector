@@ -50,6 +50,7 @@ jobs:
             echo "No new images, skipping commit"
           else
             git commit -m "Cameras: $(date -u '+%Y-%m-%d %H:%M UTC')"
+            git pull --rebase
             git push
           fi
 
@@ -63,5 +64,6 @@ jobs:
             echo "Heartbeat already up to date, skipping commit"
           else
             git commit -m "Heartbeat $(date -u '+%Y-%m-%d')"
+            git pull --rebase
             git push
           fi
